@@ -75,7 +75,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Configure claude-desktop
 | `-Python <路径>` | 指定 Python 3.10+ 可执行文件 |
 | `-Version <vX.Y.Z\|latest>` | 安装指定 Release，默认 `latest` |
 | `-Configure none\|claude-desktop\|claude-code\|both` | 自动写入客户端配置，默认 `none` |
-| `-InstallEverything` | 检测不到 Everything 客户端时用 winget 安装 |
+| `-InstallEverything` | 未安装 Everything 客户端时用 winget 安装（已安装但未运行则只提示启动） |
 | `-FromLocal` | 从当前仓库 `dist/*.whl` 或源码安装，而不是下载 Release |
 | `-SkipSelftest` | 跳过安装后的自检 |
 | `-Yes` | 所有询问默认 yes |
@@ -90,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Configure claude-desktop
 
 ```powershell
 uv venv --python 3.12
-uv pip install .\everything_mcp-0.2.1-py3-none-any.whl
+uv pip install .\everything_mcp-0.2.2-py3-none-any.whl
 ```
 
 或直接从源码安装：
@@ -238,6 +238,9 @@ MCP server 能影响 agent 的地方只有三处：`instructions`（随 initiali
 
 - **`error_code: 2`（Everything search client is not running）**
   Everything.exe 没开。启动它，或设 `EVERYTHING_MCP_AUTOSTART=1` 让 server 自动拉起。
+- **安装脚本提示 `Everything.exe is installed but not running`**
+  客户端已安装但未启动。启动它（托盘出现图标）后重新运行自检，或设置
+  `EVERYTHING_MCP_AUTOSTART=1` 让 server 按需拉起。
 - **`Could not load the Everything SDK DLL ...`**
   宿主 Python 的位数和所选 DLL 不匹配（例如 32 位 Python 加载了 `Everything64.dll`）。
   装 64 位 Python，或用 `EVERYTHING_MCP_DLL` 指定正确位数的 DLL。

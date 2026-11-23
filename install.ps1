@@ -40,7 +40,7 @@
     Do not run the post-install self-test.
 
 .PARAMETER InstallEverything
-    Install the Everything desktop client via winget if it is not running.
+    Install the Everything desktop client via winget if it is not installed.
 
 .PARAMETER Yes
     Assume yes for prompts (e.g. installing Python when missing).
@@ -289,6 +289,92 @@ function Test-EverythingRunning {
     return [bool](Get-Process -Name "Everything" -ErrorAction SilentlyContinue)
 }
 
+function ConvertTo-ExePath {
+    param([string]$Value)
+    if (-not $Value) { return $null }
+
+    $path = $Value.Trim()
+    if ($path.StartsWith('"')) {
+        $end = $path.IndexOf('"', 1)
+        if ($end -gt 1) { $path = $path.Substring(1, $end - 1) }
+    } else {
+        $path = ([regex]::Replace($path, ',\s*-?\d+\s*$', '')).Trim()
+    }
+    return [Environment]::ExpandEnvironmentVariables($path)
+}
+
+function Test-ExePath {
+    param([string]$Path)
+    if (-not $Path) { return $false }
+    if ([IO.Path]::GetExtension($Path) -ne ".exe") { return $false }
+    return Test-Path -LiteralPath $Path
+}
+
+function Find-EverythingExe {
+    $candidates = New-Object System.Collections.ArrayList
+
+    $override = [Environment]::ExpandEnvironmentVariables([string]$env:EVERYTHING_MCP_EXE)
+    if (Test-ExePath $override) {
+        return $override
+    }
+
+    foreach ($process in @(Get-Process -Name "Everything" -ErrorAction SilentlyContinue)) {
+        try {
+            if ($process.Path) { [void]$candidates.Add([string]$process.Path) }
+        } catch {
+            # Elevated processes may not expose their path.
+        }
+    }
+
+    foreach ($hive in @("HKCU:", "HKLM:")) {
+        $key = "$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Everything.exe"
+        try {
+            $value = Get-ItemPropertyValue -LiteralPath $key -Name "(default)" -ErrorAction Stop
+            if ($value) { [void]$candidates.Add([string]$value) }
+        } catch {
+            # Not registered in this hive.
+        }
+    }
+
+    $uninstallRoots = @(
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    foreach ($root in $uninstallRoots) {
+        $entries = Get-ItemProperty -Path $root -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "Everything*" }
+        foreach ($entry in $entries) {
+            $iconPath = ConvertTo-ExePath ([string]$entry.DisplayIcon)
+            if ($iconPath) { [void]$candidates.Add($iconPath) }
+            if ($entry.InstallLocation) {
+                $installLocation = ([string]$entry.InstallLocation).Trim('"')
+                [void]$candidates.Add((Join-Path $installLocation "Everything.exe"))
+            }
+        }
+    }
+
+    if ($env:ProgramFiles) {
+        [void]$candidates.Add((Join-Path $env:ProgramFiles "Everything\Everything.exe"))
+    }
+    if (${env:ProgramFiles(x86)}) {
+        [void]$candidates.Add((Join-Path ${env:ProgramFiles(x86)} "Everything\Everything.exe"))
+    }
+    if ($env:LOCALAPPDATA) {
+        [void]$candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Everything\Everything.exe"))
+    }
+
+    $command = Get-Command "Everything.exe" -ErrorAction SilentlyContinue
+    if ($command) { [void]$candidates.Add($command.Source) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-ExePath $candidate) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
 function Install-EverythingClient {
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) {
@@ -429,11 +515,16 @@ try {
 
     $everythingRunning = Test-EverythingRunning
     if (-not $everythingRunning) {
-        if ($InstallEverything) {
+        $everythingExe = Find-EverythingExe
+        if ($everythingExe) {
+            Write-Warn "Everything.exe is installed but not running: $everythingExe"
+            Write-Host "    Start it (the tray icon must be present) and rerun the self-test, or set" -ForegroundColor DarkGray
+            Write-Host "    EVERYTHING_MCP_AUTOSTART=1 so the server can launch it on demand." -ForegroundColor DarkGray
+        } elseif ($InstallEverything) {
             Install-EverythingClient
         } else {
-            Write-Warn "Everything.exe was not detected."
-            Write-Host "    Start the client (tray icon must be present), or install it with:" -ForegroundColor DarkGray
+            Write-Warn "Everything.exe is not installed."
+            Write-Host "    Install it with:" -ForegroundColor DarkGray
             Write-Host "      winget install --id voidtools.Everything -e" -ForegroundColor DarkGray
             Write-Host "    Download: https://www.voidtools.com/downloads/" -ForegroundColor DarkGray
         }

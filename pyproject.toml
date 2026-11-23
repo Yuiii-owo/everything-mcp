@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "everything-mcp"
-version = "0.2.1"
+version = "0.2.2"
 description = "MCP server exposing the Everything SDK for fast local file search on Windows"
 readme = "README.md"
 requires-python = ">=3.10"
