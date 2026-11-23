@@ -90,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Configure claude-desktop
 
 ```powershell
 uv venv --python 3.12
-uv pip install .\everything_mcp-0.2.0-py3-none-any.whl
+uv pip install .\everything_mcp-0.2.1-py3-none-any.whl
 ```
 
 或直接从源码安装：
@@ -123,14 +123,14 @@ uv pip install -e ".[dev]"
 
 ## 接入 AI 客户端
 
-一键安装脚本输出的 JSON 直接可用（`command` 是安装目录里的 venv python）：
+一键安装脚本输出的 JSON 直接可用（`command` 是安装目录里的 console script）：
 
 ```json
 {
   "mcpServers": {
     "everything": {
-      "command": "C:\\Users\\<你>\\AppData\\Local\\everything-mcp\\venv\\Scripts\\python.exe",
-      "args": ["-m", "everything_mcp"]
+      "command": "C:\\Users\\<你>\\AppData\\Local\\everything-mcp\\venv\\Scripts\\everything-mcp.exe",
+      "args": []
     }
   }
 }
@@ -139,7 +139,8 @@ uv pip install -e ".[dev]"
 - **Claude Desktop**：写入 `%APPDATA%\Claude\claude_desktop_config.json`，或安装时加
   `-Configure claude-desktop`。改完重启客户端。
 - **Claude Code**：`-Configure claude-code` 会执行
-  `claude mcp add everything -s user -- <venv python> -m everything_mcp`；也可手动运行。
+  `claude mcp add everything -s user -- <安装目录>\venv\Scripts\everything-mcp.exe`；
+  也可手动运行。
 - **其他客户端**：把上面的 JSON 片段合并进对应配置文件即可。
 
 也可以不写绝对路径，直接使用启动器或已安装的 console script：

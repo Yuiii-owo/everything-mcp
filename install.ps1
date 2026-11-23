@@ -25,7 +25,7 @@
     Path to a Python 3.10+ executable. Auto-detected when omitted.
 
 .PARAMETER Version
-    Release tag to install (e.g. v0.2.0) or "latest". Only used for remote installs.
+    Release tag to install (e.g. v0.2.1) or "latest". Only used for remote installs.
 
 .PARAMETER Configure
     Client to register the server with: none, claude-desktop, claude-code, both.
@@ -304,7 +304,7 @@ function Install-EverythingClient {
 }
 
 function Set-ClaudeDesktopConfig {
-    param([string]$PythonPath)
+    param([string]$CommandPath)
 
     if (-not $env:APPDATA) {
         Write-Warn "APPDATA is not set; skipping Claude Desktop configuration."
@@ -340,8 +340,8 @@ function Set-ClaudeDesktopConfig {
     }
 
     $entry = [pscustomobject]@{
-        command = $PythonPath
-        args    = @("-m", "everything_mcp")
+        command = $CommandPath
+        args    = @()
     }
     $config.mcpServers | Add-Member -NotePropertyName "everything" -NotePropertyValue $entry -Force
 
@@ -351,7 +351,7 @@ function Set-ClaudeDesktopConfig {
 }
 
 function Set-ClaudeCodeConfig {
-    param([string]$PythonPath)
+    param([string]$CommandPath)
 
     $claude = Get-Command claude -ErrorAction SilentlyContinue
     if (-not $claude) {
@@ -360,10 +360,10 @@ function Set-ClaudeCodeConfig {
     }
 
     & $claude.Source mcp remove everything -s user 2>$null | Out-Null
-    & $claude.Source mcp add everything -s user -- $PythonPath -m everything_mcp
+    & $claude.Source mcp add everything -s user -- $CommandPath
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Could not update Claude Code automatically. Add it manually:"
-        Write-Host "  claude mcp add everything -s user -- `"$PythonPath`" -m everything_mcp"
+        Write-Host "  claude mcp add everything -s user -- `"$CommandPath`""
     } else {
         Write-Step "Claude Code user config updated"
     }
@@ -398,16 +398,20 @@ $target = Resolve-InstallTarget -Repo $Repo -Version $Version -ScriptRoot $PSScr
 
 try {
     $venvPython = Install-PackageVenv -PythonPath $pythonInfo.Path -InstallDir $InstallDir -PackageSpec $target.Path
+    $commandPath = Join-Path (Split-Path -Parent $venvPython) "everything-mcp.exe"
+    if (-not (Test-Path -LiteralPath $commandPath)) {
+        throw "Console script not found after installation: $commandPath"
+    }
 
     $launcherPath = Join-Path $InstallDir "everything-mcp.cmd"
-    $launcherBody = "@echo off`r`n`"%~dp0venv\Scripts\python.exe`" -m everything_mcp %*`r`n"
+    $launcherBody = "@echo off`r`n`"%~dp0venv\Scripts\everything-mcp.exe`" %*`r`n"
     [IO.File]::WriteAllText($launcherPath, $launcherBody, [System.Text.Encoding]::ASCII)
     Write-Step "Launcher written: $launcherPath"
 
     $selftestOk = $null
     if (-not $SkipSelftest) {
         Write-Step "Running self-test"
-        $selftestOutput = & $venvPython -m everything_mcp --selftest 2>&1
+        $selftestOutput = & $commandPath --selftest 2>&1
         $selftestExit = $LASTEXITCODE
         $selftestOutput | ForEach-Object { Write-Host $_ }
         if ($selftestExit -eq 0) {
@@ -436,17 +440,17 @@ try {
     }
 
     if ($Configure -eq "claude-desktop" -or $Configure -eq "both") {
-        Set-ClaudeDesktopConfig -PythonPath $venvPython
+        Set-ClaudeDesktopConfig -CommandPath $commandPath
     }
     if ($Configure -eq "claude-code" -or $Configure -eq "both") {
-        Set-ClaudeCodeConfig -PythonPath $venvPython
+        Set-ClaudeCodeConfig -CommandPath $commandPath
     }
 
     $configSnippet = [pscustomobject]@{
         mcpServers = [pscustomobject]@{
             everything = [pscustomobject]@{
-                command = $venvPython
-                args    = @("-m", "everything_mcp")
+                command = $commandPath
+                args    = @()
             }
         }
     } | ConvertTo-Json -Depth 10
@@ -455,6 +459,7 @@ try {
     Write-Host "Installation complete." -ForegroundColor Green
     Write-Host "  Python    : $($pythonInfo.Path) ($($pythonInfo.Version))"
     Write-Host "  Venv      : $(Join-Path $InstallDir 'venv')"
+    Write-Host "  Command   : $commandPath"
     Write-Host "  Launcher  : $launcherPath"
     if ($null -ne $selftestOk) {
         Write-Host "  Self-test : $(if ($selftestOk) { 'passed' } else { 'Everything client not running' })"
